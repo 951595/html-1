@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>contact form to email using js</title>
+    <link rel="stylesheet" href="cf.css">
+</head>
+<body>
+    <div class="container">
+        <form onsubmit="sendEmail(); reset(); return false;">
+            <h3>Get in touch</h3>
+            <input type="text" id="name" placeholder="yourname">
+            <input type="email" id="email" placeholder="email id">
+            <input type="text" id="phone" placeholder="phone number">
+            <textarea id="message"  rows="4" placeholder="How can we help you?"></textarea>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <script src=" https://smtpjs.com/v3/smtp.js"></script>
+    <script>
+        function sendEmail(){
+            Email.send({
+                Host : "smtp.gmail.com",
+                Username : "gudurukrishn98@gmail.com",
+                Password : "manjula17",
+                To : 'gudurukrishna@gmail.com',
+                From :document.getElementById("email").value,
+                Subject : " New contact form",
+                Body : "And this is the body"
+                }).then(
+                message => alert(message)
+            
+                );
+        }
+    </script>
+</body>
+</html>
