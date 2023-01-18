@@ -1,0 +1,1588 @@
+{\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
+{\*\generator Riched20 10.0.19041}\viewkind4\uc1 
+\pard\sa200\sl276\slmult1\f0\fs22\lang9  -------------DOCKER EC2 in aws------------------------------------\par
+resource "aws_instance" "krishna" \{\par
+  ami             = "ami-0b5eea76982371e91"\par
+  instance_type   = "t2.micro"\par
+  key_name        = "web-server"\par
+  user_data       = file("./file.sh") #"c:/Users/M1089339/krishnaTerraform/docker-ec2/file.sh"\par
+  vpc_security_group_ids = ["default"]\par
+\par
+  tags = \{\par
+    Name = "divya"\par
+  \}\par
+\}\par
+\par
+resource "aws_ecr_repository" "demo" \{\par
+  name                 = "divya"\par
+  image_tag_mutability = "MUTABLE"\par
+\par
+  image_scanning_configuration \{\par
+    scan_on_push = true\par
+  \}\par
+\}\par
+\par
+output "ec2instance" \{\par
+  value = aws_instance.krishna.public_ip\par
+\}\par
+\par
+output "aws_ecr_repository_url" \{\par
+  value = aws_ecr_repository.demo.name\par
+\}\par
+\par
+/*resource "aws_key_pair" "demo" \{\par
+  key_name   = "web-server"\par
+  public_key = file("./web-server.pem")\par
+\}\par
+*/\par
+-------------------------------commands using ssh--------------------------\par
+#! /bin/bash\par
+sudo yum update -y\par
+sudo yum install -y docker\par
+sudo service docker start\par
+sudo usermod -a -G docker ec2-user\par
+sudo docker pull nginx:latest\par
+sudo docker run --name mynginx1 -p 8080:80 -d nginx\par
+export  AWS_ACCESS_KEY_ID="AKIA5LWO4Z4ZEQBF4Y54"\par
+export AWS_SECRET_ACCESS_KEY="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"\par
+export AWS_DEFAULT_REGION="us-east-1"\par
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 918483160882.dkr.ecr.us-east-1.amazonaws.com\par
+sudo docker tag nginx:latest 918483160882.dkr.ecr.us-east-1.amazonaws.com/divya\par
+sudo docker push 918483160882.dkr.ecr.us-east-1.amazonaws.com/divya \par
+-----------add key-pair file in pem formate----------------------------------\par
+\par
+------------------------- api-gateway in aws using terraform-----------------------------------\par
+resource "aws_api_gateway_rest_api" "rest_api" \{\par
+  name = var.rest_api_name\par
+\}\par
+resource "aws_api_gateway_resource" "rest_api_resource" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id\par
+  path_part   = "krishna"\par
+\}\par
+resource "aws_api_gateway_method" "rest_api_get_method" \{\par
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id   = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method   = "GET"\par
+  authorization = "NONE"\par
+\}\par
+resource "aws_api_gateway_integration" "rest_api_get_method_integration" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_method.rest_api_get_method.http_method\par
+  type        = "MOCK"\par
+  //request_tempates is required to explicitly set the statusCode to an integer value of 200\par
+  request_templates = \{\par
+    "application/json" = jsonencode(\{\par
+      statusCode = 200\par
+    \})\par
+  \}\par
+\}\par
+resource "aws_api_gateway_method_response" "rest_api_get_method_response_200" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_method.rest_api_get_method.http_method\par
+  status_code = "200"\par
+\}\par
+resource "aws_api_gateway_integration_response" "rest_api_get_method_integration_response_200" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_integration.rest_api_get_method_integration.http_method\par
+  status_code = aws_api_gateway_method_response.rest_api_get_method_response_200.status_code\par
+  response_templates = \{\par
+    "application/json" = jsonencode(\{\par
+      body = "Hello ! welcome to aws rest api gateway"\par
+    \})\par
+  \}\par
+\} \par
+resource "aws_api_gateway_deployment" "rest_api_deployment" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  triggers = \{\par
+    redeployment = sha1(jsonencode([\par
+      aws_api_gateway_resource.rest_api_resource.id,\par
+      aws_api_gateway_method.rest_api_get_method.id,\par
+      aws_api_gateway_integration.rest_api_get_method_integration.id\par
+    ]))\par
+  \}\par
+\}\par
+resource "aws_api_gateway_stage" "rest_api_stage" \{\par
+  deployment_id = aws_api_gateway_deployment.rest_api_deployment.id\par
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id\par
+  stage_name    = var.rest_api_stage_name\par
+\}\par
+output.tf--------\par
+output "rest_api_url" \{\par
+  value = "$\{aws_api_gateway_deployment.rest_api_deployment.invoke_url\}$\{aws_api_gateway_stage.rest_api_stage.stage_name\}$\{aws_api_gateway_resource.rest_api_resource.path\}"\par
+\}\par
+var.tf------------------\par
+variable "rest_api_name" \{\par
+  default = "divya"\par
+\}\par
+variable "rest_api_stage_name" \{\par
+  default = "prod"\par
+\}\par
+------------------------------------ waf using terraform-----------------------------\par
+// creating api gateway and deploy \par
+\par
+resource "aws_api_gateway_rest_api" "rest_api" \{\par
+  name = "navi"\par
+\}\par
+resource "aws_api_gateway_resource" "rest_api_resource" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id\par
+  path_part   = "krishna"\par
+\}\par
+resource "aws_api_gateway_method" "rest_api_get_method" \{\par
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id   = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method   = "GET"\par
+  authorization = "NONE"\par
+\}\par
+resource "aws_api_gateway_integration" "rest_api_get_method_integration" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_method.rest_api_get_method.http_method\par
+  type        = "MOCK"\par
+  //request_tempates is required to explicitly set the statusCode to an integer value of 200\par
+  request_templates = \{\par
+    "application/json" = jsonencode(\{\par
+      statusCode = 200\par
+    \})\par
+  \}\par
+\}\par
+resource "aws_api_gateway_method_response" "rest_api_get_method_response_200" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_method.rest_api_get_method.http_method\par
+  status_code = "200"\par
+\}\par
+resource "aws_api_gateway_integration_response" "rest_api_get_method_integration_response_200" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  resource_id = aws_api_gateway_resource.rest_api_resource.id\par
+  http_method = aws_api_gateway_integration.rest_api_get_method_integration.http_method\par
+  status_code = aws_api_gateway_method_response.rest_api_get_method_response_200.status_code\par
+  response_templates = \{\par
+    "application/json" = jsonencode(\{\par
+      body = "Hello ! welcome to aws rest api gateway"\par
+    \})\par
+  \}\par
+\} \par
+resource "aws_api_gateway_deployment" "rest_api_deployment" \{\par
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id\par
+  triggers = \{\par
+    redeployment = sha1(jsonencode([\par
+      aws_api_gateway_resource.rest_api_resource.id,\par
+      aws_api_gateway_method.rest_api_get_method.id,\par
+      aws_api_gateway_integration.rest_api_get_method_integration.id\par
+    ]))\par
+  \}\par
+\}\par
+resource "aws_api_gateway_stage" "rest_api_stage" \{\par
+  deployment_id = aws_api_gateway_deployment.rest_api_deployment.id\par
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id\par
+  stage_name    = "dev"\par
+\}\par
+\par
+// creating waf \par
+\par
+resource "aws_wafv2_ip_set" "example" \{\par
+  name               = "example"\par
+  description        = "Example IP set"\par
+  scope              = "REGIONAL"\par
+  ip_address_version = "IPV4"\par
+  addresses          = ["192.168.7.174/32"]\par
+\par
+  tags = \{\par
+    Tag1 = "Value1"\par
+  \}\par
+\}\par
+resource "aws_wafv2_web_acl" "di" \{\par
+  name  = "divya"\par
+  description = "Example Web-Acl"\par
+  scope = "REGIONAL"\par
+\par
+  default_action \{\par
+    allow \{\}\par
+  \}\par
+   \par
+   rule \{\par
+     name = "ip-blacklist"\par
+     priority = 1\par
+\par
+     action \{\par
+       block \{\}\par
+     \}\par
+\par
+     statement \{\par
+       ip_set_reference_statement \{\par
+        arn = aws_wafv2_ip_set.example.arn\par
+       \}\par
+     \}\par
+     visibility_config \{\par
+    cloudwatch_metrics_enabled = false #true\par
+    metric_name                = "BlacklistedIp"\par
+    sampled_requests_enabled   = false #true\par
+  \}\par
+   \}\par
+  visibility_config \{\par
+    cloudwatch_metrics_enabled = false #true\par
+    metric_name                = "friendly-metric-name"\par
+    sampled_requests_enabled   = false #true\par
+  \}\par
+\}\par
+\par
+resource "aws_wafv2_web_acl_association" "demo" \{\par
+  resource_arn = aws_api_gateway_stage.rest_api_stage.arn\par
+  web_acl_arn  = aws_wafv2_web_acl.di.arn\par
+\}\par
+output "rest_api_url" \{\par
+  value = "$\{aws_api_gateway_deployment.rest_api_deployment.invoke_url\}$\{aws_api_gateway_stage.rest_api_stage.stage_name\}$\{aws_api_gateway_resource.rest_api_resource.path\}"\par
+\}\par
+---------------------------aws lambda using terraform--------------------------------------------\par
+main.tf-------\par
+provider "archive" \{\}\par
+\par
+data "archive_file" "zip" \{\par
+   type = "zip"\par
+   source_file = "hello_lambda.py"\par
+   output_path = "hello_lambda.zip"\par
+\par
+\}\par
+data "aws_iam_policy_document" "policy" \{\par
+  statement \{\par
+    sid = ""\par
+    effect = "Allow"\par
+\par
+    principals \{\par
+        identifiers = ["lambda.amazonaws.com"]\par
+        type = "Service"\par
+    \}\par
+      actions = [ "sts:AssumeRole" ]\par
+  \}\par
+\}\par
+resource "aws_iam_role" "ammu" \{\par
+  name = "ammu"\par
+  assume_role_policy = data.aws_iam_policy_document.policy.json\par
+\}\par
+resource "aws_lambda_function" "lambda-f1" \{\par
+  function_name = "hello_lambda"\par
+\par
+  filename = data.archive_file.zip.output_path\par
+  source_code_hash = data.archive_file.zip.output_base64sha256\par
+\par
+  role = aws_iam_role.ammu.arn\par
+  handler = "hello_lambda.lambda_handler"\par
+  runtime = "python3.9"\par
+\par
+  environment \{\par
+    variables = \{\par
+        greeting = "Wellcome to aws lambda function using terraform ! Wellcome to LTIMindtree ......"\par
+    \}\par
+  \}\par
+\}\par
+output "lambda-f1" \{\par
+  value = aws_lambda_function.lambda-f1.qualified_arn\par
+\}\par
+hello_lambda.tf-------------\par
+provider "archive" \{\}\par
+\par
+data "archive_file" "zip" \{\par
+   type = "zip"\par
+   source_file = "hello_lambda.py"\par
+   output_path = "hello_lambda.zip"\par
+\par
+\}\par
+data "aws_iam_policy_document" "policy" \{\par
+  statement \{\par
+    sid = ""\par
+    effect = "Allow"\par
+\par
+    principals \{\par
+        identifiers = ["lambda.amazonaws.com"]\par
+        type = "Service"\par
+    \}\par
+      actions = [ "sts:AssumeRole" ]\par
+  \}\par
+\}\par
+resource "aws_iam_role" "ammu" \{\par
+  name = "ammu"\par
+  assume_role_policy = data.aws_iam_policy_document.policy.json\par
+\}\par
+resource "aws_lambda_function" "lambda-f1" \{\par
+  function_name = "hello_lambda"\par
+\par
+  filename = data.archive_file.zip.output_path\par
+  source_code_hash = data.archive_file.zip.output_base64sha256\par
+\par
+  role = aws_iam_role.ammu.arn\par
+  handler = "hello_lambda.lambda_handler"\par
+  runtime = "python3.9"\par
+\par
+  environment \{\par
+    variables = \{\par
+        greeting = "Wellcome to aws lambda function using terraform ! Wellcome to LTIMindtree ......"\par
+    \}\par
+  \}\par
+\}\par
+output "lambda-f1" \{\par
+  value = aws_lambda_function.lambda-f1.qualified_arn\par
+\}\par
+providers.tf--------------------\par
+provider "aws" \{\par
+  access_key = "AKIA5LWO4Z4ZEQBF4Y54"\par
+  secret_key = "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"\par
+  region     = "us-east-1"\par
+\}\par
+-----------------------api gateway in lambda using terraform--------------------------\par
+main.tf------------\par
+provider "archive" \{\}\par
+\par
+data "archive_file" "zip" \{\par
+  type        = "zip"\par
+  source_file = "lambda.py"\par
+  output_path = "lambda.zip"\par
+\par
+\}\par
+data "aws_iam_policy_document" "policy" \{\par
+  statement \{\par
+    sid    = ""\par
+    effect = "Allow"\par
+\par
+    principals \{\par
+      identifiers = ["lambda.amazonaws.com"]\par
+      type        = "Service"\par
+    \}\par
+    actions = ["sts:AssumeRole"]\par
+  \}\par
+\}\par
+resource "aws_iam_role" "ammu" \{\par
+  name               = "ammu"\par
+  assume_role_policy = data.aws_iam_policy_document.policy.json\par
+\}\par
+resource "aws_lambda_function" "lambda-f1" \{\par
+  function_name = "lambda"\par
+\par
+  filename         = data.archive_file.zip.output_path\par
+  source_code_hash = data.archive_file.zip.output_base64sha256\par
+\par
+  role    = aws_iam_role.ammu.arn\par
+  handler = "lambda.lambda_handler"\par
+  runtime = "python3.9"\par
+\par
+  /*environment \{\par
+    variables = \{\par
+      greeting = "Wellcome to aws lambda function using terraform ! Wellcome to LTIMindtree ......"\par
+    \}\par
+  \}*/\par
+\}\par
+output "lambda-f1" \{\par
+  value = aws_lambda_function.lambda-f1.qualified_arn\par
+\}\par
+\par
+resource "aws_apigatewayv2_api" "lambda-api" \{\par
+  name          = "divya"\par
+  protocol_type = "HTTP"\par
+\}\par
+resource "aws_apigatewayv2_stage" "lambda-stage" \{\par
+  api_id      = aws_apigatewayv2_api.lambda-api.id\par
+  name        = "$default"\par
+  auto_deploy = true\par
+\}\par
+resource "aws_apigatewayv2_integration" "lambda-integration" \{\par
+  api_id               = aws_apigatewayv2_api.lambda-api.id\par
+  integration_type     = "AWS_PROXY"\par
+  integration_method   = "POST"\par
+  integration_uri      = aws_lambda_function.lambda-f1.invoke_arn\par
+  passthrough_behavior = "WHEN_NO_MATCH"\par
+\}\par
+resource "aws_apigatewayv2_route" "lambda-route" \{\par
+  api_id    = aws_apigatewayv2_api.lambda-api.id\par
+  route_key = "GET /\{proxy+\}"\par
+  target    = "integrations/$\{aws_apigatewayv2_integration.lambda-integration.id\}"\par
+\}\par
+resource "aws_lambda_permission" "api-gw" \{\par
+  statement_id  = "AllowExecutionFromAPIGateway"\par
+  action        = "lambda:InvokeFunction"\par
+  function_name = aws_lambda_function.lambda-f1.arn\par
+  principal     = "apigateway.amazonaws.com"\par
+  source_arn    = "$\{aws_apigatewayv2_api.lambda-api.execution_arn\}/*/*/*"\par
+\}\par
+lambda.py--------------------\par
+import json\par
+\par
+def lambda_handler(event, context):\par
+    return \{\par
+        'statusCode': 200,\par
+        'body': json.dumps(event['headers']['X-Forwarded-For'])\par
+    \} \par
+-------------------------------ecs using terraform-------------------------------------\par
+main.tf--------\par
+resource "aws_ecs_cluster" "test-cluster" \{\par
+  name = "myapp-cluster"\par
+\}\par
+\par
+data "template_file" "testapp" \{\par
+  template = file("/templates/image.json")\par
+\par
+  vars = \{\par
+    app_image      = var.app_image\par
+    app_port       = var.app_port\par
+    fargate_cpu    = var.fargate_cpu\par
+    fargate_memory = var.fargate_memory\par
+    aws_region     = var.aws_region\par
+  \}\par
+\}\par
+\par
+resource "aws_ecs_task_definition" "test-def" \{\par
+  family                   = "testapp-task"\par
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn\par
+  network_mode             = "awsvpc"\par
+  requires_compatibilities = ["FARGATE"]\par
+  cpu                      = var.fargate_cpu\par
+  memory                   = var.fargate_memory\par
+  container_definitions = jsonencode([\{\par
+    name      = "testapp"\par
+    image     = "$\{var.app_image\}"\par
+    essential = true\par
+    #environment = var.container_environment\par
+    portMappings = [\{\par
+      protocol      = "tcp"\par
+      containerPort = var.app_port\par
+      hostPort      = var.app_port\par
+    \}]\par
+    /*logConfiguration = \{\par
+      logDriver = "awslogs"\par
+      options = \{\par
+        awslogs-group         = aws_cloudwatch_log_group.main.name\par
+        awslogs-stream-prefix = "ecs"\par
+        awslogs-region        = var.region\par
+      \}\par
+    \}*/\par
+    # secrets = var.container_secrets\par
+  \}])\par
+\}\par
+\par
+resource "aws_ecs_service" "test-service" \{\par
+  name            = "testapp-service"\par
+  cluster         = aws_ecs_cluster.test-cluster.id\par
+  task_definition = aws_ecs_task_definition.test-def.arn\par
+  desired_count   = var.app_count\par
+  launch_type     = "FARGATE"\par
+\par
+  network_configuration \{\par
+    security_groups  = [aws_security_group.ecs_sg.id]\par
+    subnets          = aws_subnet.private.*.id\par
+    assign_public_ip = true\par
+  \}\par
+\par
+  load_balancer \{\par
+    target_group_arn = aws_alb_target_group.myapp-tg.arn\par
+    container_name   = "testapp"\par
+    container_port   = var.app_port\par
+  \}\par
+\par
+  depends_on = [aws_alb_listener.testapp, aws_iam_role_policy_attachment.ecs_task_execution_role]\par
+\}\par
+alb.tf-----------\par
+#in this template we are creating aws application laadbalancer and target group and alb http listener\par
+\par
+resource "aws_alb" "alb" \{\par
+  name           = "myapp-load-balancer"\par
+  subnets        = aws_subnet.public.*.id\par
+  security_groups = [aws_security_group.alb-sg.id]\par
+\}\par
+\par
+resource "aws_alb_target_group" "myapp-tg" \{\par
+  name        = "myapp-tg"\par
+  port        = 80\par
+  protocol    = "HTTP"\par
+  target_type = "ip"\par
+  vpc_id      = aws_vpc.test-vpc.id\par
+\par
+  health_check \{\par
+    healthy_threshold   = 2\par
+    unhealthy_threshold = 2\par
+    timeout             = 3\par
+    protocol            = "HTTP"\par
+    matcher             = "200"\par
+    path                = var.health_check_path\par
+    interval            = 30\par
+  \}\par
+\}\par
+\par
+#redirecting all incomming traffic from ALB to the target group\par
+resource "aws_alb_listener" "testapp" \{\par
+  load_balancer_arn = aws_alb.alb.id\par
+  port              = var.app_port\par
+  protocol          = "HTTP"\par
+  #ssl_policy        = "ELBSecurityPolicy-2016-08"\par
+  #certificate_arn   = "arn:aws:iam::187416307283:server-certificate/test_cert_rab3wuqwgja25ct3n4jdj2tzu4"\par
+  #enable above 2 if you are using HTTPS listner and change protocal from HTTPS to HTTPS\par
+  default_action \{\par
+    type             = "forward"\par
+    target_group_arn = aws_alb_target_group.myapp-tg.arn\par
+  \}\par
+\}\par
+auto-scaling.tf-------------\par
+resource "aws_appautoscaling_target" "ecs_target" \{\par
+  max_capacity       = 4\par
+  min_capacity       = 2\par
+  resource_id        = "service/$\{aws_ecs_cluster.test-cluster.name\}/$\{aws_ecs_service.test-service.name\}"\par
+  scalable_dimension = "ecs:service:DesiredCount"\par
+  service_namespace  = "ecs"\par
+\}\par
+\par
+#Automatically scale capacity up by one\par
+resource "aws_appautoscaling_policy" "ecs_policy_up" \{\par
+  name               = "scale-down"\par
+  policy_type        = "StepScaling"\par
+  resource_id        = "service/$\{aws_ecs_cluster.test-cluster.name\}/$\{aws_ecs_service.test-service.name\}"\par
+  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension\par
+  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace\par
+\par
+  step_scaling_policy_configuration \{\par
+    adjustment_type         = "ChangeInCapacity"\par
+    cooldown                = 60\par
+    metric_aggregation_type = "Maximum"\par
+\par
+    step_adjustment \{\par
+      metric_interval_upper_bound = 0\par
+      scaling_adjustment          = -1\par
+    \}\par
+  \}\par
+\}\par
+--iam_role.tf--------------------------\par
+## ECS task execution role data\par
+data "aws_iam_policy_document" "ecs_task_execution_role" \{\par
+  version = "2012-10-17"\par
+  statement \{\par
+    sid     = ""\par
+    effect  = "Allow"\par
+    actions = ["sts:AssumeRole"]\par
+\par
+    principals \{\par
+      type        = "Service"\par
+      identifiers = ["ecs-tasks.amazonaws.com"]\par
+    \}\par
+  \}\par
+\}\par
+\par
+# ECS task execution role\par
+resource "aws_iam_role" "ecs_task_execution_role" \{\par
+  name               = var.ecs_task_execution_role\par
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_role.json\par
+\}\par
+\par
+# ECS task execution role policy attachment\par
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role" \{\par
+  role       = aws_iam_role.ecs_task_execution_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"\par
+\}\par
+logs.tf------------------------------------\par
+# Set up CloudWatch group and log stream and retain logs for 30 days\par
+resource "aws_cloudwatch_log_group" "testapp_log_group" \{\par
+  name              = "/ecs/testapp"\par
+  retention_in_days = 30\par
+\par
+  tags = \{\par
+    Name = "cw-log-group"\par
+  \}\par
+\}\par
+\par
+resource "aws_cloudwatch_log_stream" "myapp_log_stream" \{\par
+  name           = "test-log-stream"\par
+  log_group_name = aws_cloudwatch_log_group.testapp_log_group.name\par
+\}\par
+outputs.tf--------------\par
+output "alb_hostname" \{\par
+  value = aws_alb.alb.dns_name\par
+\}\par
+---sg.tf---------------------------------\par
+# security group creation and attcahing in ecs, alb etc\par
+\par
+# ALB Security Group: Edit to restrict access to the application\par
+resource "aws_security_group" "alb-sg" \{\par
+  name        = "testapp-load-balancer-security-group"\par
+  description = "controls access to the ALB"\par
+  vpc_id      = aws_vpc.test-vpc.id\par
+\par
+  ingress \{\par
+    protocol    = "tcp"\par
+    from_port   = var.app_port\par
+    to_port     = var.app_port\par
+    cidr_blocks = ["0.0.0.0/0"]\par
+  \}\par
+\par
+  egress \{\par
+    protocol    = "-1"\par
+    from_port   = 0\par
+    to_port     = 0\par
+    cidr_blocks = ["0.0.0.0/0"]\par
+  \}\par
+\}\par
+\par
+# this security group for ecs - Traffic to the ECS cluster should only come from the ALB\par
+resource "aws_security_group" "ecs_sg" \{\par
+  name        = "testapp-ecs-tasks-security-group"\par
+  description = "allow inbound access from the ALB only"\par
+  vpc_id      = aws_vpc.test-vpc.id\par
+\par
+  ingress \{\par
+    protocol        = "tcp"\par
+    from_port       = var.app_port\par
+    to_port         = var.app_port\par
+    security_groups = [aws_security_group.alb-sg.id]\par
+  \}\par
+\par
+  egress \{\par
+    protocol    = "-1"\par
+    from_port   = 0\par
+    to_port     = 0\par
+    cidr_blocks = ["0.0.0.0/0"]\par
+  \}\par
+\}\par
+var.tf------------\par
+variable "aws_region" \{\par
+  default     = "us-east-1"\par
+  description = "aws region where our resources going to create choose"\par
+  #replace the region as suits for your requirement\par
+\}\par
+\par
+variable "az_count" \{\par
+  default     = "2"\par
+  description = "number of availability zones in above region"\par
+\}\par
+\par
+variable "ecs_task_execution_role" \{\par
+  default     = "myECcsTaskExecutionRole"\par
+  description = "ECS task execution role name"\par
+\}\par
+\par
+variable "app_image" \{\par
+  default     = "nginx:latest"\par
+  description = "docker image to run in this ECS cluster"\par
+\}\par
+\par
+variable "app_port" \{\par
+  default     = 80\par
+  description = "portexposed on the docker image"\par
+\}\par
+\par
+variable "app_count" \{\par
+  default     = "2" #choose 2 bcz i have choosen 2 AZ\par
+  description = "numer of docker containers to run"\par
+\}\par
+\par
+variable "health_check_path" \{\par
+  default = "/"\par
+\}\par
+\par
+variable "fargate_cpu" \{\par
+  default     = 1024\par
+  description = "fargate instacne CPU units to provision,my requirent 1 vcpu so gave 1024"\par
+\}\par
+\par
+variable "fargate_memory" \{\par
+  default     = 2048\par
+  description = "Fargate instance memory to provision (in MiB) not MB"\par
+\}\par
+---vpc.tf-------------------\par
+resource "aws_vpc" "test-vpc" \{\par
+  cidr_block = "172.16.0.0/16"\par
+\}\par
+\par
+# Fetch AZs in the current region\par
+data "aws_availability_zones" "available" \{\par
+\}\par
+\par
+\par
+# Create var.az_count private subnets, each in a different AZ\par
+resource "aws_subnet" "private" \{\par
+  count             = var.az_count\par
+  cidr_block        = cidrsubnet(aws_vpc.test-vpc.cidr_block, 8, count.index)\par
+  availability_zone = data.aws_availability_zones.available.names[count.index]\par
+  vpc_id            = aws_vpc.test-vpc.id\par
+\}\par
+\par
+# Create var.az_count public subnets, each in a different AZ\par
+resource "aws_subnet" "public" \{\par
+  count                   = var.az_count\par
+  cidr_block              = cidrsubnet(aws_vpc.test-vpc.cidr_block, 8, var.az_count + count.index)\par
+  availability_zone       = data.aws_availability_zones.available.names[count.index]\par
+  vpc_id                  = aws_vpc.test-vpc.id\par
+  map_public_ip_on_launch = true\par
+\}\par
+\par
+# Internet Gateway for the public subnet\par
+resource "aws_internet_gateway" "test-igw" \{\par
+  vpc_id = aws_vpc.test-vpc.id\par
+\}\par
+\par
+# Route the public subnet traffic through the IGW\par
+resource "aws_route" "internet_access" \{\par
+  route_table_id         = aws_vpc.test-vpc.main_route_table_id\par
+  destination_cidr_block = "0.0.0.0/0"\par
+  gateway_id             = aws_internet_gateway.test-igw.id\par
+\}\par
+\par
+# Create a NAT gateway with an Elastic IP for each private subnet to get internet connectivity\par
+resource "aws_eip" "test-eip" \{\par
+  count      = var.az_count\par
+  vpc        = true\par
+  depends_on = [aws_internet_gateway.test-igw]\par
+\}\par
+\par
+resource "aws_nat_gateway" "test-natgw" \{\par
+  count         = var.az_count\par
+  subnet_id     = element(aws_subnet.public.*.id, count.index)\par
+  allocation_id = element(aws_eip.test-eip.*.id, count.index)\par
+\}\par
+\par
+# Create a new route table for the private subnets, make it route non-local traffic through the NAT gateway to the internet\par
+resource "aws_route_table" "private" \{\par
+  count  = var.az_count\par
+  vpc_id = aws_vpc.test-vpc.id\par
+\par
+  route \{\par
+    cidr_block     = "0.0.0.0/0"\par
+    nat_gateway_id = element(aws_nat_gateway.test-natgw.*.id, count.index)\par
+  \}\par
+\}\par
+\par
+# Explicitly associate the newly created route tables to the private subnets (so they don't default to the main route table)\par
+resource "aws_route_table_association" "private" \{\par
+  count          = var.az_count\par
+  subnet_id      = element(aws_subnet.private.*.id, count.index)\par
+  route_table_id = element(aws_route_table.private.*.id, count.index)\par
+\}\par
+-------------------------------------s3-bucket using terraform----------------------------------------\par
+main.tf -----\par
+resource "aws_s3_bucket" "bucket" \{\par
+  bucket = "ammu-s3"\par
+  \par
+  tags = \{\par
+    Name        = "My bucket"\par
+    Environment = "Dev"\par
+  \}\par
+  \par
+\}\par
+resource "aws_s3_bucket_acl" "divya" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  acl    = "public-read"\par
+\par
+ \par
+\}\par
+resource "aws_s3_bucket_website_configuration" "deepika" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+\par
+  index_document \{\par
+   suffix =  "index.html"\par
+  \}\par
+  \par
+\}\par
+resource "aws_s3_object" "object" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  key    = "index.html"\par
+  source = "C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\s3-bucket\\\\index.html"\par
+\par
+  etag = filemd5("C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\s3-bucket\\\\index.html")\par
+\}\par
+\par
+/*resource "aws_s3_bucket_object" "krishna" \{\par
+  for_each = fileset(path.module, "*.html")\par
+  bucket = aws_s3_bucket.bucket.id\par
+  key    = each.value\par
+  source = "$\{path.module\}/$\{each.value\}"\par
+\}\par
+output "fileset-results" \{\par
+  value = fileset(path.module, "*.html")\par
+\}*/\par
+resource "aws_s3_bucket_policy" "default" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  policy = data.aws_iam_policy_document.default.json\par
+\}\par
+\par
+data "aws_iam_policy_document" "default" \{\par
+  statement \{\par
+    principals \{\par
+      type        = "AWS"\par
+      identifiers = ["*"]\par
+    \}\par
+\par
+    actions = [ "s3:GetObject",]\par
+\par
+    resources = [\par
+      "$\{aws_s3_bucket.bucket.arn\}/*",\par
+    ]\par
+  \}\par
+\}\par
+-----------------------------s3-bucket usinf cloudfront using terraform---------------------------------\par
+main.tf----\par
+resource "aws_s3_bucket" "bucket" \{\par
+  bucket = "ammu-s3"\par
+ \par
+  \par
+  tags = \{\par
+    Name        = "My bucket"\par
+    Environment = "Dev"\par
+  \} \par
+\}\par
+resource "aws_s3_bucket_acl" "divya" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+   acl = "private"\par
+\par
+ \par
+\}\par
+resource "aws_s3_bucket_website_configuration" "deepika" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+\par
+  index_document \{\par
+   suffix =  "index.html"\par
+  \}\par
+  \par
+\}\par
+resource "aws_s3_object" "object" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  key    = "index.html"\par
+  source = "C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\static-s3-bucket-cf\\\\index.html"\par
+\par
+  etag = filemd5("C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\static-s3-bucket-cf\\\\index.html")\par
+\}\par
+resource "aws_s3_object" "object-1" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  key    = "main.css"\par
+  source = "C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\static-s3-bucket-cf\\\\main.css"\par
+\par
+  etag = filemd5("C:\\\\Users\\\\M1089339\\\\krishnaTerraform\\\\static-s3-bucket-cf\\\\main.css")\par
+\}\par
+\par
+locals \{\par
+  s3_origin_id = "myS3Origin"\par
+\}\par
+\par
+resource "aws_cloudfront_origin_access_identity" "ammu" \{\par
+  comment = "myS3Origin"\par
+\}\par
+\par
+resource "aws_cloudfront_distribution" "s3_distribution" \{\par
+  origin \{\par
+    domain_name              = aws_s3_bucket.bucket.bucket_regional_domain_name\par
+    #origin_access_control_id = aws_cloudfront_origin_access_control.default.id\par
+    origin_id                = local.s3_origin_id\par
+\par
+    s3_origin_config \{\par
+      origin_access_identity = aws_cloudfront_origin_access_identity.ammu.cloudfront_access_identity_path\par
+    \}\par
+  \}\par
+\par
+  enabled             = true\par
+  is_ipv6_enabled     = true\par
+  comment             = "my-cloudfront"\par
+  default_root_object = "index.html"\par
+\par
+ /* logging_config \{\par
+    include_cookies = false\par
+    bucket          = "mylogs.s3.amazonaws.com"\par
+    prefix          = "myprefix"\par
+  \}*/\par
+\par
+  #aliases = ["mysite.example.com", "yoursite.example.com"]\par
+\par
+  default_cache_behavior \{\par
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]\par
+    cached_methods   = ["GET", "HEAD"]\par
+    target_origin_id = local.s3_origin_id\par
+\par
+    forwarded_values \{\par
+      query_string = false\par
+\par
+      cookies \{\par
+        forward = "none"\par
+      \}\par
+    \}\par
+\par
+    viewer_protocol_policy = "allow-all"\par
+    min_ttl                = 0\par
+    default_ttl            = 3600\par
+    max_ttl                = 86400\par
+  \}\par
+\par
+  # Cache behavior with precedence 0\par
+  ordered_cache_behavior \{\par
+    path_pattern     = "/content/immutable/*"\par
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]\par
+    cached_methods   = ["GET", "HEAD", "OPTIONS"]\par
+    target_origin_id = local.s3_origin_id\par
+\par
+    forwarded_values \{\par
+      query_string = false\par
+      headers      = ["Origin"]\par
+\par
+      cookies \{\par
+        forward = "none"\par
+      \}\par
+    \}\par
+\par
+    min_ttl                = 0\par
+    default_ttl            = 86400\par
+    max_ttl                = 31536000\par
+    compress               = true\par
+    viewer_protocol_policy = "redirect-to-https"\par
+  \}\par
+\par
+  # Cache behavior with precedence 1\par
+  ordered_cache_behavior \{\par
+    path_pattern     = "/content/*"\par
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]\par
+    cached_methods   = ["GET", "HEAD"]\par
+    target_origin_id = local.s3_origin_id\par
+\par
+    forwarded_values \{\par
+      query_string = false\par
+\par
+      cookies \{\par
+        forward = "none"\par
+      \}\par
+    \}\par
+\par
+    min_ttl                = 0\par
+    default_ttl            = 3600\par
+    max_ttl                = 86400\par
+    compress               = true\par
+    viewer_protocol_policy = "redirect-to-https"\par
+  \}\par
+\par
+  price_class = "PriceClass_200"\par
+\par
+  restrictions \{\par
+    geo_restriction \{\par
+      restriction_type = "whitelist"\par
+      locations        = ["US", "CA", "GB", "DE","IN","IR"]\par
+    \}\par
+  \}\par
+\par
+  tags = \{\par
+    Environment = "production"\par
+    Name = "my-tag"\par
+  \}\par
+\par
+  viewer_certificate \{\par
+    cloudfront_default_certificate = true\par
+  \}\par
+\}\par
+resource "aws_s3_bucket_policy" "default" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+  policy = data.aws_iam_policy_document.default.json\par
+\}\par
+data "aws_iam_policy_document" "default" \{\par
+  statement \{\par
+    principals \{\par
+      type        = "AWS"\par
+      identifiers = [aws_cloudfront_origin_access_identity.ammu.iam_arn]\par
+    \}\par
+\par
+    actions = [ "s3:GetObject"]\par
+\par
+    resources = [\par
+      "$\{aws_s3_bucket.bucket.arn\}/*"\par
+    ]\par
+  \}\par
+\}\par
+resource "aws_s3_bucket_public_access_block" "default" \{\par
+  bucket = aws_s3_bucket.bucket.id\par
+\par
+  block_public_acls = true\par
+  block_public_policy = true\par
+\}\par
+----------------------------docker ecr-ecs using terraform--------------------\par
+ecs-ecr---------------\par
+main.tf-----\par
+module "ecr" \{\par
+  source      = "../modules/ecr"\par
+  name        = var.name\par
+  environment = var.environment\par
+  aws_region  = var.region\par
+  region_abbr = var.region_abbr\par
+\}\par
+\par
+module "ecs" \{\par
+  source                = "../modules/ecs"\par
+  name                  = var.name\par
+  environment           = var.environment\par
+  region                = var.region\par
+  region_abbr           = var.region_abbr\par
+  container_port        = var.container_port\par
+  container_cpu         = var.container_cpu\par
+  container_memory      = var.container_memory\par
+  service_desired_count = var.service_desired_count\par
+  container_environment = [\par
+    \{ name = "LOG_LEVEL",\par
+    value = "DEBUG" \},\par
+    \{ name = "PORT", value = var.container_port \},\par
+    \{ name = "$\{var.name\}-enviroment", value = var.environment \},\par
+    \{ name = "REGION", value = var.region_abbr \}\par
+  ]\par
+  container_image             = var.container_image #module.ecr.aws_ecr_repository_url\par
+  image_tag                   = var.image_tag\par
+  subnets                     = var.subnets\par
+  aws_profile                 = var.aws_profile\par
+  aws_service_security_groups = var.aws_service_security_groups\par
+\}\par
+/*\par
+module "nlb"\{\par
+  source = "../modules/nlb"\par
+  name = var.name\par
+  vpc_id = var.vpc_id\par
+  subnets = var.public_subnets\par
+  enviroment = var.environment\par
+  region_abbr = var.region_abbr\par
+  nlb_tls_crtn_arn = var.tsl_certificate_arn_wildcard\par
+\}\par
+\par
+module "ecr_sync" \{\par
+  source = ""\par
+  artifactory_user = var.artifactory_user\par
+  artifactory_password = var.artifactory_password\par
+  source_image_url = ""\par
+  target_image_url = module.ecr.aws_ecr_repository_url\par
+  image_tag = var.image_tag\par
+  aws_region = var.aws_region\par
+\}\par
+*/\par
+var.tf-------\par
+variable "name" \{\par
+  default = "ammu"\par
+\}\par
+variable "environment" \{\par
+  default = "prod"\par
+\}\par
+variable "region" \{\par
+  default = "us-east-1"\par
+\}\par
+variable "region_abbr" \{\par
+  #description = "the aws region abbreviation"\par
+  default = "us-est-1"\par
+\}\par
+variable "container_port" \{\par
+ default = 8081\par
+\}\par
+variable "container_cpu" \{\par
+  default = 256\par
+\par
+\}\par
+variable "container_memory" \{\par
+  default = 512\par
+\}\par
+variable "container_image" \{\par
+ default= "nginx"\par
+\}\par
+/*variable "container_environment" \{\par
+  description = "divya"\par
+  type        = list(any)\par
+\}*/\par
+variable "image_tag" \{\par
+  default = "latest"\par
+\}\par
+variable "service_desired_count" \{\par
+  #description = "number of services running parallel"\par
+  default = 1\par
+\}\par
+variable "subnets" \{\par
+  #description = " list of subnet ids"\par
+  default = ["subnet-018eab8d641c61580","subnet-09f5fdd6d4996faee"]\par
+\}\par
+variable "aws_profile" \{\par
+  default = ""\par
+  description = "aws credentials profile"\par
+\}\par
+variable "aws_service_security_groups" \{\par
+  #description = "comma separated list of security groups"\par
+  default = ["sg-08db924874b3f6b99"]\par
+\}\par
+modules-------------------------\par
+ecr----- main.tf------------\par
+resource "aws_ecr_repository" "divya" \{\par
+  name                 = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-repo"\par
+  image_tag_mutability = "MUTABLE"\par
+\par
+  image_scanning_configuration \{\par
+    scan_on_push = true\par
+  \}\par
+\}\par
+resource "aws_ecr_lifecycle_policy" "main" \{\par
+  repository = aws_ecr_repository.divya.name\par
+\par
+  policy = <<EOF\par
+\{\par
+    "rules": [\par
+        \{\par
+            "rulePriority": 1,\par
+            "description": "Expire images older than 10 days",\par
+            "selection": \{\par
+                "tagStatus": "any",\par
+                "countType": "sinceImagePushed",\par
+                "countUnit": "days",\par
+                "countNumber": 10\par
+            \},\par
+            "action": \{\par
+                "type": "expire"\par
+            \}\par
+        \}\par
+    ]\par
+\}\par
+EOF\par
+\}\par
+/*\par
+resource "aws_ecr_lifecycle_policy" "main" \{\par
+  repository = aws_ecr_repository.divya.name\par
+\par
+  policy = jsonencode(\{\par
+    rules = [\{\par
+      rulePriority = 1\par
+      description  = "keep only one untagged image"\par
+      selection = \{\par
+        tagStatus   = "any"\par
+        countType   = "imageCountMoreThen"\par
+        countNumber = 1\par
+      \}\par
+      action = \{\par
+        type = "expire"\par
+      \}\par
+    \}]\par
+  \})\par
+\}\par
+*/\par
+output "aws_ecr_repository_url" \{\par
+  value = aws_ecr_repository.divya.name\par
+\}\par
+ecs------------main.tf----------\par
+resource "aws_iam_role" "ecs_task_exection_role" \{\par
+  name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-ecsTaskExecutionRole"\par
+\par
+  assume_role_policy = <<EOF\par
+ \{\par
+  "Version": "2012-10-17",\par
+  "Statement": [\par
+    \{\par
+      "Sid": "",\par
+      "Effect": "Allow",\par
+      "Principal": \{\par
+        "Service": "ecs-tasks.amazonaws.com"\par
+      \},\par
+      "Action": "sts:AssumeRole"\par
+    \}\par
+  ]\par
+\}\par
+EOF\par
+\}\par
+resource "aws_iam_role" "ecs_task_role" \{\par
+  name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-ecsTaskRole"\par
+\par
+  assume_role_policy = <<EOF\par
+  \{\par
+    "Version" : "2012-10-17",\par
+    "Statement" : [\par
+      \{\par
+        "Action" : "sts:AssumeRole",\par
+        "Principal" : \{\par
+          "Service" : [ "ecs-tasks.amazonaws.com" ,\par
+                         "apigateway.amazonaws.com"\par
+                       ] \par
+        \},\par
+         "Sid": "",\par
+         "Effect" : "Allow"\par
+         \par
+      \}\par
+    ]\par
+  \}\par
+EOF\par
+\}\par
+/*\par
+resource "aws_iam_policy" "rds" \{\par
+  name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task-policy-rds"\par
+  description = "policy that allows access to rds"\par
+\par
+  policy = <<EOF\par
+\{\par
+      "Version" : "2012-10-17",\par
+    "Statement" : [\par
+      \{\par
+        "Action" : [\par
+          "rds:*"\par
+        ],\par
+        "Effect"   : "Allow",\par
+        "Resource" : "*"\par
+      \}\par
+    ]\par
+  \}\par
+EOF\par
+\}\par
+resource "aws_iam_policy" "ses" \{\par
+  name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task-policy-ses"\par
+  description = "policy that allows access to ses"\par
+\par
+  policy = <<EOF\par
+\{\par
+    "Version" : "2012-10-17",\par
+    "Statement" : [\par
+      \{\par
+        "Action" : [\par
+          "ses:SendRawEmail",\par
+          "ses:SendEmail"\par
+        ],\par
+        "Effect"   : "Allow",\par
+        "Resource" : "*",\par
+        "condition" : \{\par
+            "StringLike" : \{\par
+                "ses:FromAddress" : [\par
+                    "*.toyota.com"\par
+                 ]\par
+            \}\par
+        \}\par
+      \}\par
+    ]\par
+  \}\par
+EOF\par
+\}\par
+\par
+resource "aws_iam_policy" "secrets" \{\par
+  name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task-policy-rds"\par
+  description = "policy that allows access to rds"\par
+\par
+  policy = <<EOF\par
+\{\par
+      "Version" : "2012-10-17",\par
+    "Statement" : [\par
+      \{\par
+        "Sid" : "AccessSecrets",\par
+        "Action" : [\par
+          "rds:*"\par
+        ],\par
+        "Effect"   : "Allow",\par
+        "Resource" : "*"\par
+      \}\par
+    ]\par
+  \}\par
+EOF\par
+\}\par
+*/\par
+resource "aws_iam_role_policy_attachment" "ecs-task-execution-role-policy-attachement" \{\par
+  role       = aws_iam_role.ecs_task_exection_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"\par
+\}\par
+/*\par
+resource "aws_iam_role_policy_attachment" "s3-execution-role-policy-attachement" \{\par
+  role       = aws_iam_role.ecs_task_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"\par
+\}\par
+resource "aws_iam_role_policy_attachment" "APIGateway-role-policy-attachement" \{\par
+  role       = aws_iam_role.ecs_task_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"\par
+\}\par
+*/\par
+resource "aws_iam_role_policy_attachment" "AmazonECSTask-role-policy-attachement" \{\par
+  role       = aws_iam_role.ecs_task_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"\par
+\}\par
+/*\par
+resource "aws_iam_role_policy_attachment" "ecs-task-role-policy-attachement" \{\par
+  role       = aws_iam_role.ecs_task_role.name\par
+  policy_arn = aws_iam_policy.rds.arn\par
+\}\par
+resource "aws_iam_role_policy_attachment" "ecs-task-role-policy-attachement-for-elasticache" \{\par
+  role       = aws_iam_role.ecs_task_role.name\par
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonElastiCacheFullAccess"\par
+\}\par
+*/\par
+resource "aws_cloudwatch_log_group" "main" \{\par
+  name = "/ecs/$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task"\par
+\par
+  tags = \{\par
+    Name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+\par
+resource "aws_ecs_task_definition" "main" \{\par
+  family                   = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task"\par
+  network_mode             = "awsvpc"\par
+  requires_compatibilities = ["FARGATE"]\par
+  cpu                      = var.container_cpu\par
+  memory                   = var.container_memory\par
+  execution_role_arn       = aws_iam_role.ecs_task_exection_role.arn\par
+  task_role_arn            = aws_iam_role.ecs_task_role.arn\par
+  container_definitions = jsonencode([\{\par
+    name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-container"\par
+    image       = "$\{var.container_image\}:$\{var.image_tag\}"\par
+    essential   = true\par
+    environment = var.container_environment\par
+    portMappings = [\{\par
+      protocol      = "tcp"\par
+      containerPort = var.container_port\par
+      hostPort      = var.container_port\par
+    \}]\par
+    logConfiguration = \{\par
+      logDriver = "awslogs"\par
+      options = \{\par
+        awslogs-group         = aws_cloudwatch_log_group.main.name\par
+        awslogs-stream-prefix = "ecs"\par
+        awslogs-region        = var.region\par
+      \}\par
+    \}\par
+    # secrets = var.container_secrets\par
+  \}])\par
+  tags = \{\par
+    Name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+\par
+resource "aws_ecs_cluster" "main" \{\par
+  name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-cluster"\par
+  setting \{\par
+    name  = "containerInsights"\par
+    value = "enabled"\par
+  \}\par
+  tags = \{\par
+    Name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-cluster"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+resource "aws_ecs_service" "main" \{\par
+  name                               = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-service"\par
+  cluster                            = aws_ecs_cluster.main.id\par
+  task_definition                    = aws_ecs_task_definition.main.arn\par
+  desired_count                      = "1"\par
+  deployment_minimum_healthy_percent = 50\par
+  deployment_maximum_percent         = 200\par
+  #health_check_grace_period_seconds = 60\par
+  launch_type         = "FARGATE"\par
+  scheduling_strategy = "REPLICA"\par
+  network_configuration \{\par
+    security_groups   = var.aws_service_security_groups\par
+    subnets           = var.subnets #var.subnets.*.id\par
+    assign_public_ip = true\par
+  \}\par
+  force_new_deployment = true\par
+\par
+  /*\par
+  load_balancer \{\par
+      target_group_arn = var.aws_nlb_target_group_arn\par
+      container_name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-container"\par
+      container_port = var.container_port\par
+  \}*/\par
+\par
+  lifecycle \{\par
+    ignore_changes = [task_definition, desired_count]\par
+  \}\par
+\}\par
+samplepublic.tf-----------\par
+resource "aws_ecs_task_definition" "main2" \{\par
+  family                   = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task2"\par
+  network_mode             = "awsvpc"\par
+  requires_compatibilities = ["FARGATE"]\par
+  cpu                      = var.container_cpu\par
+  memory                   = var.container_memory\par
+  execution_role_arn       = aws_iam_role.ecs_task_exection_role.arn\par
+  task_role_arn            = aws_iam_role.ecs_task_role.arn\par
+  container_definitions = jsonencode([\{\par
+    name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-container"\par
+    image       = "$\{var.container_image\}:$\{var.image_tag\}"\par
+    essential   = true\par
+    environment = var.container_environment\par
+    portMappings = [\{\par
+      protocol      = "tcp"\par
+      containerPort = var.container_port\par
+      hostPort      = var.container_port\par
+    \}]\par
+    logConfiguration = \{\par
+      logDriver = "awslogs"\par
+      options = \{\par
+        awslogs-group         = aws_cloudwatch_log_group.main.name\par
+        awslogs-stream-prefix = "ecs"\par
+        awslogs-region        = var.region\par
+      \}\par
+    \}\par
+    # secrets = var.container_secrets\par
+  \}])\par
+  tags = \{\par
+    Name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-task"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+\par
+resource "aws_ecs_cluster" "main2" \{\par
+  name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-cluster2"\par
+  setting \{\par
+    name  = "containerInsights"\par
+    value = "enabled"\par
+  \}\par
+  tags = \{\par
+    Name        = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-cluster"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+resource "aws_ecs_service" "main2" \{\par
+  name                               = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-service2"\par
+  cluster                            = aws_ecs_cluster.main.id\par
+  task_definition                    = aws_ecs_task_definition.main2.arn\par
+  desired_count                      = "1"\par
+  deployment_minimum_healthy_percent = 50\par
+  deployment_maximum_percent         = 200\par
+  #health_check_grace_period_seconds = 60\par
+  launch_type         = "FARGATE"\par
+  scheduling_strategy = "REPLICA"\par
+  network_configuration \{\par
+    security_groups   = var.aws_service_security_groups\par
+    subnets           = ["subnet-018eab8d641c61580","subnet-09f5fdd6d4996faee"]\par
+    assign_public_ip = true\par
+  \}\par
+  force_new_deployment = true\par
+\par
+  lifecycle \{\par
+    ignore_changes = [task_definition, desired_count]\par
+  \}\par
+\}\par
+update_ecs_service.sh---------------------\par
+aws ecs update-service --cluster $\{ecs_cluster_name\} --service $\{ecs_service_name\} --task-defnition $\{ecs_task_definition_name\} --region=$\{aws_region\}\par
+nlb----main.tf-------------------------\par
+resource "aws_lb" "main" \{\par
+  name               = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-nlb"\par
+  internal           = false\par
+  load_balancer_type = "network"\par
+  subnets            = var.subnets\par
+  enable_cross_zone_load_balancing = true\par
+  enable_deletion_protection = false\par
+\par
+  tags = \{\par
+    Name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-nlb"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+resource "aws_lb_target_group" "main-tls" \{\par
+  name        =  "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-tg-tls"\par
+  target_type = "ip"\par
+  port        = 8081\par
+  protocol    = "TCP"\par
+  vpc_id      = var.vpc_id\par
+\par
+   tags = \{\par
+    Name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-tg-tls"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+resource "aws_lb_target_group" "main-tcp" \{\par
+  name        =  "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-tg-tcp"\par
+  target_type = "ip"\par
+  port        = 8081\par
+  protocol    = "TCP"\par
+  vpc_id      = var.vpc_id\par
+\par
+   tags = \{\par
+    Name = "$\{var.name\}-$\{var.environment\}-$\{var.region_abbr\}-tg-tcp"\par
+    Environment = var.environment\par
+  \}\par
+\}\par
+# redirect to https listener\par
+resource "aws_lb_listener" "http" \{\par
+  load_balancer_arn = aws_lb.main.id\par
+  port              = 8081\par
+  protocol          = "TCP"\par
+\par
+  default_action \{\par
+    type             = "forward"\par
+    target_group_arn = aws_lb_target_group.main-tcp.id\par
+  \}\par
+\}\par
+# redirect traffic to target group\par
+resource "aws_lb_listener" "https" \{\par
+  load_balancer_arn = aws_lb.main.id\par
+  port              = 443\par
+  protocol          = "TLS"\par
+  ssl_policy        = "ELBSecurityPolicy-2016-08"\par
+  certificate_arn   = var.nlb_tls_crt_arn  #"arn:aws:iam::187416307283:server-certificate/test_cert_rab3wuqwgja25ct3n4jdj2tzu4"\par
+\par
+  default_action \{\par
+    type             = "forward"\par
+    target_group_arn = aws_lb_target_group.main-tls.id\par
+  \}\par
+\}\par
+output "aws_nlb_target_group_tls_arn" \{\par
+  value = aws_lb_target_group.main-tls.arn\par
+\}\par
+output "aws_nlb_target_group_tcp_arn" \{\par
+  value = aws_lb_target_group.main-tcp\par
+\}\par
+output "aws_lb_main_arn" \{\par
+  value = aws_lb.main.arn\par
+\}\par
+output "aws_lb_main_dns_name" \{\par
+  value = aws_lb.main.dns_name\par
+\}\par
+output "aws_lb_main_zone_id" \{\par
+  value = aws_lb.main.zone_id\par
+\}\par
+\par
+---------------------terragrunt ec2-----------------\par
+terragrunt.hcl----------\par
+terraform\{\par
+    source = "tfr:///terraform-aws-modules/ec2-instance/aws?version=4.2.1"\par
+\}\par
+\par
+generate "provider"\{\par
+    path = "provider.tf"\par
+    if_exists = "overwrite_terragrunt"\par
+    contents = <<EOF\par
+    provider "aws"\{\par
+        region = "us-east-1"\par
+        access_key = "AKIA5LWO4Z4ZEQBF4Y54"\par
+        secret_key = "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"\par
+    \}\par
+    EOF\par
+\}\par
+inputs = \{\par
+    ami ="ami-08c40ec9ead489470"\par
+    instance_type = "t2.micro"\par
+    tags = \{\par
+        Name = "Terragrunt : Ec2"\par
+    \}\par
+\}\par
+---------------terragrunt s3-bucket-----------\par
+terragrunt.hcl----\par
+terraform\{\par
+    source = "tfr:///terraform-aws-modules/s3-bucket/aws?version=3.6.0"\par
+\}\par
+generate "provider"\{\par
+    path = "provider.tf"\par
+    if_exists = "overwrite_terragrunt"\par
+    contents = <<EOF\par
+    provider "aws"\{\par
+        region = "us-east-1"\par
+        access_key = "AKIA5LWO4Z4ZEQBF4Y54"\par
+        secret_key = "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"\par
+    \}\par
+    EOF\par
+\}\par
+inputs = \{\par
+   bucket = "my-b-1"\par
+   acl = "public-read"\par
+  \par
+\}\par
+ ---------------terragrunt s3-cf--------\par
+terragrunt.hcl------\par
+terraform\{\par
+    source = "../../modules/s3-cf?version=3.6.0"\par
+\}\par
+generate "provider"\{\par
+    path = "provider.tf"\par
+    if_exists = "overwrite_terragrunt"\par
+    contents = <<EOF\par
+     provider "aws"\{\par
+        region = "us-east-1"\par
+        access_key = "AKIA5LWO4Z4ZEQBF4Y54"\par
+        secret_key = "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"\par
+    \}\par
+    EOF\par
+\}\par
+}
+ 
